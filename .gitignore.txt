@@ -1,0 +1,22 @@
+# Maven
+target/
+
+# OS
+.DS_Store
+Thumbs.db
+
+# IDE
+.idea/
+.vscode/
+*.iml
+.classpath
+.project
+.settings/
+
+# Logs
+*.log
+
+# Secrets / runtime files
+.env
+output.json
+output.json.tmp
