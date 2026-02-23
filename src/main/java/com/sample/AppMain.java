@@ -25,7 +25,7 @@ public class AppMain {
     public static void main(String[] args) throws Exception {
         App app = new App();
 
-        app.command("/items", (req, ctx) -> {
+        app.command("/torenama-items", (req, ctx) -> {
             ctx.ack(":hourglass_flowing_sand: Qiita記事を取得して output.json に保存します…");
 
             executor.submit(() -> {
