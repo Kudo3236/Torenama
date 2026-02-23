@@ -19,4 +19,4 @@ FROM eclipse-temurin:17-jre
 WORKDIR /app
 COPY --from=build /app/target/*.jar /app/
 RUN ls -la /app
-CMD ["sh", "-c", "ls -la /app && java -jar /app/*SNAPSHOT*.jar"]
+CMD ["sh", "-c", "java -jar /app/fetch-trends.jar"]
