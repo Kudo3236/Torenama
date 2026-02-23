@@ -43,6 +43,7 @@
   </dependencies>
 
   <build>
+    <finalName>fetch-trends</finalName>
     <plugins>
       <!-- compile -->
       <plugin>
