@@ -19,7 +19,7 @@ FROM eclipse-temurin:17-jre
 WORKDIR /app
 
 # fat-jar を配置
-COPY --from=build /app/target/*SNAPSHOT*.jar app.jar
+COPY --from=build /app/target/*SNAPSHOT*.jar /app/app.jar
 
 # Render は PORT を環境変数で渡す
-CMD ["sh", "-c", "java -jar app.jar"]
+CMD ["sh", "-c", "java -jar /app/app.jar"]
