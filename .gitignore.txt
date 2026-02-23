@@ -1,5 +1,5 @@
 # Maven
-target/
+/target/
 
 # OS
 .DS_Store
