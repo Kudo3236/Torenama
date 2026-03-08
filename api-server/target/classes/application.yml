@@ -1,0 +1,15 @@
+server:
+  port: ${PORT:8080}
+
+qiita:
+  token: ${QIITA_TOKEN}
+  per-page: 20
+  page: 1
+
+trend:
+  output-path: data/items.json
+  top-n: 10
+
+spring:
+  jackson:
+    time-zone: Asia/Tokyo

@@ -1,0 +1,4 @@
+com\sample\api\ApiApplication.class
+com\sample\api\service\QiitaTrendService.class
+com\sample\api\service\SchedulerService.class
+com\sample\api\controller\TrendsController.class
