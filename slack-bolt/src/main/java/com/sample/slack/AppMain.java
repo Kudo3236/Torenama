@@ -8,12 +8,16 @@ import java.net.http.HttpClient;
 import java.net.http.HttpRequest;
 import java.net.http.HttpResponse;
 import java.nio.charset.StandardCharsets;
+import java.time.Duration;
 import java.util.concurrent.ExecutorService;
 import java.util.concurrent.Executors;
 
 public class AppMain {
 
-    private static final HttpClient client = HttpClient.newHttpClient();
+    private static final HttpClient client = HttpClient.newBuilder()
+            .connectTimeout(Duration.ofSeconds(10))
+            .build();
+
     private static final ExecutorService executor = Executors.newCachedThreadPool();
 
     public static void main(String[] args) throws Exception {
@@ -32,16 +36,7 @@ public class AppMain {
 
                     String url = apiBaseUrl + "/admin/update";
 
-                    HttpRequest request = HttpRequest.newBuilder()
-                            .uri(URI.create(url))
-                            .header("Accept", "application/json")
-                            .POST(HttpRequest.BodyPublishers.noBody())
-                            .build();
-
-                    HttpResponse<String> response = client.send(
-                            request,
-                            HttpResponse.BodyHandlers.ofString(StandardCharsets.UTF_8)
-                    );
+                    HttpResponse<String> response = callUpdateApi(url);
 
                     if (response.statusCode() / 100 != 2) {
                         ctx.respond(r -> r.text(":x: 更新失敗 HTTP " + response.statusCode() + "\n" + response.body()));
@@ -63,5 +58,31 @@ public class AppMain {
 
         int port = Integer.parseInt(System.getenv().getOrDefault("PORT", "3000"));
         new SlackAppServer(app, port).start();
+    }
+
+    private static HttpResponse<String> callUpdateApi(String url) throws Exception {
+        HttpRequest request = HttpRequest.newBuilder()
+                .uri(URI.create(url))
+                .header("Accept", "application/json")
+                .POST(HttpRequest.BodyPublishers.noBody())
+                .timeout(Duration.ofSeconds(30))
+                .build();
+
+        HttpResponse<String> response = client.send(
+                request,
+                HttpResponse.BodyHandlers.ofString(StandardCharsets.UTF_8)
+        );
+
+        // Render無料環境のコールドスタート対策
+        if (response.statusCode() == 502 || response.statusCode() == 503 || response.statusCode() == 504) {
+            Thread.sleep(2000);
+
+            response = client.send(
+                    request,
+                    HttpResponse.BodyHandlers.ofString(StandardCharsets.UTF_8)
+            );
+        }
+
+        return response;
     }
 }
