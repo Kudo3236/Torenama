@@ -5,6 +5,7 @@ import com.fasterxml.jackson.databind.ObjectMapper;
 import com.fasterxml.jackson.databind.node.ArrayNode;
 import com.fasterxml.jackson.databind.node.ObjectNode;
 import org.springframework.beans.factory.annotation.Value;
+import org.springframework.jdbc.core.JdbcTemplate;
 import org.springframework.stereotype.Service;
 
 import java.net.URI;
@@ -12,8 +13,6 @@ import java.net.http.HttpClient;
 import java.net.http.HttpRequest;
 import java.net.http.HttpResponse;
 import java.nio.charset.StandardCharsets;
-import java.nio.file.Files;
-import java.nio.file.Path;
 import java.time.OffsetDateTime;
 import java.util.ArrayList;
 import java.util.Comparator;
@@ -24,6 +23,11 @@ public class QiitaTrendService {
 
     private final ObjectMapper objectMapper = new ObjectMapper();
     private final HttpClient httpClient = HttpClient.newHttpClient();
+    private final JdbcTemplate jdbcTemplate;
+
+    public QiitaTrendService(JdbcTemplate jdbcTemplate) {
+        this.jdbcTemplate = jdbcTemplate;
+    }
 
     @Value("${qiita.token}")
     private String qiitaToken;
@@ -33,9 +37,6 @@ public class QiitaTrendService {
 
     @Value("${qiita.page:1}")
     private int page;
-
-    @Value("${trend.output-path:data/items.json}")
-    private String outputPath;
 
     @Value("${trend.top-n:10}")
     private int topN;
@@ -96,30 +97,31 @@ public class QiitaTrendService {
         result.put("source", "Qiita API v2");
         result.set("items", topItems);
 
-        Path path = Path.of(outputPath);
-        Files.createDirectories(path.getParent());
-        Files.writeString(
-                path,
-                objectMapper.writerWithDefaultPrettyPrinter().writeValueAsString(result),
-                StandardCharsets.UTF_8
+        String json = objectMapper.writerWithDefaultPrettyPrinter().writeValueAsString(result);
+
+        jdbcTemplate.update(
+                "insert into trend_snapshots (payload) values (?)",
+                json
         );
 
-        return objectMapper.writerWithDefaultPrettyPrinter().writeValueAsString(result);
+        return json;
     }
 
     public String readSavedTrends() throws Exception {
-        Path path = Path.of(outputPath);
+        List<String> rows = jdbcTemplate.query(
+                "select payload from trend_snapshots order by created_at desc limit 1",
+                (rs, rowNum) -> rs.getString("payload")
+        );
 
-        if (!Files.exists(path)) {
+        if (rows.isEmpty()) {
             ObjectNode empty = objectMapper.createObjectNode();
             empty.put("generated_at", (String) null);
             empty.put("formula", "likes * 0.6 + stocks * 0.4");
             empty.put("source", "Qiita API v2");
             empty.set("items", objectMapper.createArrayNode());
-
             return objectMapper.writerWithDefaultPrettyPrinter().writeValueAsString(empty);
         }
 
-        return Files.readString(path, StandardCharsets.UTF_8);
+        return rows.get(0);
     }
 }
