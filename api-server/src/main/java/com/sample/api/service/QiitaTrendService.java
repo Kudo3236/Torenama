@@ -42,6 +42,13 @@ public class QiitaTrendService {
     private int topN;
 
     public String fetchAndSave() throws Exception {
+        jdbcTemplate.execute("""
+        create table if not exists trend_snapshots (
+            id bigserial primary key,
+            payload text not null,
+            created_at timestamptz not null default now()
+        )
+        """);
         String url = "https://qiita.com/api/v2/items?page=" + page + "&per_page=" + perPage;
 
         HttpRequest request = HttpRequest.newBuilder()
