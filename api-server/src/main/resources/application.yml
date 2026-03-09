@@ -7,7 +7,6 @@ qiita:
   page: 1
 
 trend:
-  output-path: data/items.json
   top-n: 10
 
 spring:
@@ -22,4 +21,4 @@ spring:
 
   sql:
     init:
-      mode: alway
+      mode: always
