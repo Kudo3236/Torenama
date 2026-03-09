@@ -295,3 +295,100 @@ SlackトークンやDB接続情報などの機密情報は
 環境変数で管理し、リポジトリには含めていません。
 
 ---
+=======
+# Torenama
+
+Qiita API から記事一覧を取得し、トレンドスコア  
+`likes * 0.6 + stocks * 0.4`  
+を算出してランキング化するアプリです。
+
+本プロジェクトは以下の2サービス構成です。
+
+- `api-server`
+  - Qiita API 取得
+  - トレンドスコア算出
+  - PostgreSQL へ保存
+  - `/mock/trends` 提供
+  - `@Scheduled` による定期更新
+
+- `slack-bolt`
+  - Slack Slash Command `/torenama-items` を受付
+  - `api-server` の `/admin/update` を呼び出して手動更新
+
+---
+
+## システム構成
+
+```text
+Slack
+  │
+  │ /torenama-items
+  ▼
+slack-bolt
+  │
+  │ POST /admin/update
+  ▼
+api-server
+  │
+  │ GET /api/v2/items
+  ▼
+Qiita API
+  │
+  ▼
+PostgreSQL
+  │
+  ▼
+GET /mock/trends
+
+
+---
+
+# Features
+
+- Qiita API から記事取得
+- トレンドスコア算出
+- PostgreSQL 永続保存
+- `/mock/trends` API 提供
+- Slack Slash Command 更新
+- `@Scheduled` による1日1回更新
+- 例外処理
+- レートリミット対応
+- Render デプロイ対応
+
+---
+
+# Requirements
+
+- Java 17
+- Maven 3.9+
+- PostgreSQL
+- Slack App
+- Qiita API Token
+
+---
+
+# Environment Variables
+
+## api-server
+
+|Name|Description|
+|---|---|
+|QIITA_TOKEN|Qiita API Token|
+|SPRING_DATASOURCE_URL|PostgreSQL JDBC URL|
+|SPRING_DATASOURCE_USERNAME|DB Username|
+|SPRING_DATASOURCE_PASSWORD|DB Password|
+
+---
+
+## slack-bolt
+
+|Name|Description|
+|---|---|
+|SLACK_SIGNING_SECRET|Slack Signing Secret|
+|SLACK_BOT_TOKEN|Slack Bot OAuth Token|
+|API_BASE_URL|api-server URL|
+
+
+
+
+
