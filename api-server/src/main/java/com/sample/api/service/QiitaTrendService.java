@@ -25,15 +25,19 @@ public class QiitaTrendService {
 
     private static final Logger log = LoggerFactory.getLogger(QiitaTrendService.class);
 
+    // 最大リトライ回数
     private static final int MAX_RETRY_COUNT = 3;
+    // リトライ時の待機時間（ミリ秒）
     private static final long RETRY_WAIT_MILLIS = 2000L;
 
     private final ObjectMapper objectMapper = new ObjectMapper();
     private final HttpClient httpClient = HttpClient.newHttpClient();
     private final JdbcTemplate jdbcTemplate;
+    private final ZennTrendService zennTrendService;
 
-    public QiitaTrendService(JdbcTemplate jdbcTemplate) {
+    public QiitaTrendService(JdbcTemplate jdbcTemplate, ZennTrendService zennTrendService) {
         this.jdbcTemplate = jdbcTemplate;
+        this.zennTrendService = zennTrendService;
     }
 
     @Value("${qiita.token}")
@@ -45,63 +49,60 @@ public class QiitaTrendService {
     @Value("${qiita.page:1}")
     private int page;
 
-    @Value("${trend.top-n:10}")
+    @Value("${trend.top-n:20}")
     private int topN;
 
+    /**
+     * Qiita + Zenn の記事を取得し、
+     * スコア順にソートしてDBへ保存するメイン処理
+     */
     public String fetchAndSave() throws Exception {
+        // テーブルが存在しない場合は作成する
         ensureTableExists();
 
-        String url = "https://qiita.com/api/v2/items?page=" + page + "&per_page=" + perPage;
-        log.info("Qiita update started. url={}, topN={}", url, topN);
+        List<ObjectNode> mergedItems = new ArrayList<>();
 
-        HttpResponse<String> response = callQiitaApiWithRetry(url);
+        // Qiita 取得
+        List<ObjectNode> qiitaItems = fetchQiitaArticles();
+        mergedItems.addAll(qiitaItems);
 
-        JsonNode root = objectMapper.readTree(response.body());
-        if (!root.isArray()) {
-            log.error("Qiita response is not array. body={}", response.body());
-            throw new RuntimeException("Qiita response is not array.");
+        // Zenn 取得
+        try {
+            List<ObjectNode> zennItems = zennTrendService.fetchZennArticles();
+            mergedItems.addAll(zennItems);
+        } catch (Exception e) {
+            // Zenn取得失敗時でもQiitaだけで続行
+            log.warn("Zenn fetch failed. Continue with Qiita only.", e);
         }
 
-        List<ObjectNode> rankedItems = new ArrayList<>();
+        // スコアで降順にソートする
+        mergedItems.sort(Comparator.comparingDouble(o -> -o.path("score").asDouble()));
 
-        for (JsonNode item : root) {
-            int likes = item.path("likes_count").asInt(0);
-            int stocks = item.path("stocks_count").asInt(0);
-            double score = likes * 0.6 + stocks * 0.4;
-
-            ObjectNode node = objectMapper.createObjectNode();
-            node.put("title", item.path("title").asText(""));
-            node.put("url", item.path("url").asText(""));
-            node.put("likes", likes);
-            node.put("stocks", stocks);
-            node.put("score", score);
-            node.put("created_at", item.path("created_at").asText(""));
-            node.put("user_id", item.path("user").path("id").asText(""));
-
-            rankedItems.add(node);
-        }
-
-        rankedItems.sort(Comparator.comparingDouble(o -> -o.path("score").asDouble()));
-
+        // 上位N件抽出する
         ArrayNode topItems = objectMapper.createArrayNode();
-        for (int i = 0; i < Math.min(topN, rankedItems.size()); i++) {
-            topItems.add(rankedItems.get(i));
+        for (int i = 0; i < Math.min(topN, mergedItems.size()); i++) {
+            topItems.add(mergedItems.get(i));
         }
 
+        // レスポンス作成
         ObjectNode result = objectMapper.createObjectNode();
         result.put("generated_at", OffsetDateTime.now().toString());
-        result.put("formula", "likes * 0.6 + stocks * 0.4");
-        result.put("source", "Qiita API v2");
+
+        // QiitaとZennで計算式を変えている
+        // Zennは最新記事とタグの数で計算
+        result.put("formula", "qiita: likes * 0.6 + stocks * 0.4 / zenn: freshness_score + tag_bonus");
+        result.put("source", "Qiita API v2 + Zenn RSS");
         result.set("items", topItems);
 
         String json = objectMapper.writerWithDefaultPrettyPrinter().writeValueAsString(result);
 
+        // DB保存
         try {
             jdbcTemplate.update(
                     "insert into trend_snapshots (payload) values (?)",
                     json
             );
-            log.info("Qiita update succeeded. saved_items={}", topItems.size());
+            log.info("Trend snapshot saved. merged_items={}", topItems.size());
         } catch (Exception e) {
             log.error("Failed to save trend snapshot to DB.", e);
             throw e;
@@ -129,6 +130,51 @@ public class QiitaTrendService {
             log.error("Failed to read trend snapshots from DB.", e);
             throw e;
         }
+    }
+
+    private List<ObjectNode> fetchQiitaArticles() throws Exception {
+        String url = "https://qiita.com/api/v2/items?page=" + page + "&per_page=" + perPage;
+        log.info("Qiita update started. url={}, topN={}", url, topN);
+
+        HttpResponse<String> response = callQiitaApiWithRetry(url);
+
+        JsonNode root = objectMapper.readTree(response.body());
+        if (!root.isArray()) {
+            log.error("Qiita response is not array. body={}", response.body());
+            throw new RuntimeException("Qiita response is not array.");
+        }
+
+        List<ObjectNode> rankedItems = new ArrayList<>();
+
+        for (JsonNode item : root) {
+            int likes = item.path("likes_count").asInt(0);
+            int stocks = item.path("stocks_count").asInt(0);
+            double score = likes * 0.6 + stocks * 0.4;
+
+            ArrayNode tags = objectMapper.createArrayNode();
+            for (JsonNode tag : item.path("tags")) {
+                String tagName = tag.path("name").asText("");
+                if (!tagName.isBlank()) {
+                    tags.add(tagName);
+                }
+            }
+
+            ObjectNode node = objectMapper.createObjectNode();
+            node.put("title", item.path("title").asText(""));
+            node.put("url", item.path("url").asText(""));
+            node.put("likes", likes);
+            node.put("stocks", stocks);
+            node.put("score", score);
+            node.put("created_at", item.path("created_at").asText(""));
+            node.put("user_id", item.path("user").path("id").asText(""));
+            node.put("source", "qiita");
+            node.set("tags", tags);
+
+            rankedItems.add(node);
+        }
+
+        log.info("Qiita fetch completed. article_count={}", rankedItems.size());
+        return rankedItems;
     }
 
     private HttpResponse<String> callQiitaApiWithRetry(String url) throws Exception {
@@ -200,8 +246,8 @@ public class QiitaTrendService {
     private String buildEmptyResult() throws Exception {
         ObjectNode empty = objectMapper.createObjectNode();
         empty.put("generated_at", (String) null);
-        empty.put("formula", "likes * 0.6 + stocks * 0.4");
-        empty.put("source", "Qiita API v2");
+        empty.put("formula", "qiita: likes * 0.6 + stocks * 0.4 / zenn: freshness_score + tag_bonus");
+        empty.put("source", "Qiita API v2 + Zenn RSS");
         empty.set("items", objectMapper.createArrayNode());
         return objectMapper.writerWithDefaultPrettyPrinter().writeValueAsString(empty);
     }
