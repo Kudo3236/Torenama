@@ -82,6 +82,11 @@ public class ZennTrendService {
                 }
             }
 
+            // タグが1件もない記事は除外
+            if (tags.isEmpty()) {
+                continue;
+            }
+
             // スコア計算
             double score = calculateZennScore(pubDate, tags.size());
 
@@ -114,13 +119,13 @@ public class ZennTrendService {
                 long days = ChronoUnit.DAYS.between(published.toLocalDate(), OffsetDateTime.now().toLocalDate());
 
                 if (days <= 1) {
-                    freshnessScore = 50;
+                    freshnessScore = 15;
                 } else if (days <= 3) {
-                    freshnessScore = 35;
-                } else if (days <= 7) {
-                    freshnessScore = 20;
-                } else if (days <= 14) {
                     freshnessScore = 10;
+                } else if (days <= 7) {
+                    freshnessScore = 5;
+                } else if (days <= 14) {
+                    freshnessScore = 3;
                 } else {
                     freshnessScore = 0;
                 }
@@ -132,7 +137,7 @@ public class ZennTrendService {
         if (tagCount >= 3) {
             tagBonus = 10;
         } else if (tagCount == 2) {
-            tagBonus = 6;
+            tagBonus = 5;
         } else if (tagCount == 1) {
             tagBonus = 3;
         }
