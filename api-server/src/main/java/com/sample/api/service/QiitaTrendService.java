@@ -133,48 +133,51 @@ public class QiitaTrendService {
     }
 
     private List<ObjectNode> fetchQiitaArticles() throws Exception {
-        String url = "https://qiita.com/api/v2/items?page=" + page + "&per_page=" + perPage;
-        log.info("Qiita update started. url={}, topN={}", url, topN);
 
-        HttpResponse<String> response = callQiitaApiWithRetry(url);
+        List<ObjectNode> allItems = new ArrayList<>();
 
-        JsonNode root = objectMapper.readTree(response.body());
-        if (!root.isArray()) {
-            log.error("Qiita response is not array. body={}", response.body());
-            throw new RuntimeException("Qiita response is not array.");
-        }
+        int maxPage = 3; 
 
-        List<ObjectNode> rankedItems = new ArrayList<>();
+        for (int currentPage = 1; currentPage <= maxPage; currentPage++) {
 
-        for (JsonNode item : root) {
-            int likes = item.path("likes_count").asInt(0);
-            int stocks = item.path("stocks_count").asInt(0);
-            double score = likes * 0.6 + stocks * 0.4;
+            String url = "https://qiita.com/api/v2/items?page=" + currentPage + "&per_page=" + perPage;
 
-            ArrayNode tags = objectMapper.createArrayNode();
-            for (JsonNode tag : item.path("tags")) {
-                String tagName = tag.path("name").asText("");
-                if (!tagName.isBlank()) {
-                    tags.add(tagName);
+            log.info("Qiita fetch page={}", currentPage);
+
+            HttpResponse<String> response = callQiitaApiWithRetry(url);
+
+            JsonNode root = objectMapper.readTree(response.body());
+
+            for (JsonNode item : root) {
+
+                int likes = item.path("likes_count").asInt(0);
+                int stocks = item.path("stocks_count").asInt(0);
+
+                double score = likes * 0.6 + stocks * 0.4;
+
+                ArrayNode tags = objectMapper.createArrayNode();
+                for (JsonNode tag : item.path("tags")) {
+                    tags.add(tag.path("name").asText(""));
                 }
+
+                ObjectNode node = objectMapper.createObjectNode();
+                node.put("title", item.path("title").asText(""));
+                node.put("url", item.path("url").asText(""));
+                node.put("likes", likes);
+                node.put("stocks", stocks);
+                node.put("score", score);
+                node.put("created_at", item.path("created_at").asText(""));
+                node.put("user_id", item.path("user").path("id").asText(""));
+                node.put("source", "qiita");
+                node.set("tags", tags);
+
+                allItems.add(node);
             }
-
-            ObjectNode node = objectMapper.createObjectNode();
-            node.put("title", item.path("title").asText(""));
-            node.put("url", item.path("url").asText(""));
-            node.put("likes", likes);
-            node.put("stocks", stocks);
-            node.put("score", score);
-            node.put("created_at", item.path("created_at").asText(""));
-            node.put("user_id", item.path("user").path("id").asText(""));
-            node.put("source", "qiita");
-            node.set("tags", tags);
-
-            rankedItems.add(node);
         }
 
-        log.info("Qiita fetch completed. article_count={}", rankedItems.size());
-        return rankedItems;
+        log.info("Qiita total fetched count={}", allItems.size());
+
+        return allItems;
     }
 
     private HttpResponse<String> callQiitaApiWithRetry(String url) throws Exception {
