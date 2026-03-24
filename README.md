@@ -6,12 +6,17 @@
 ![Render](https://img.shields.io/badge/Deploy-Render-purple)
 ![License](https://img.shields.io/badge/License-MIT-lightgrey)
 
-Torenama は Qiita API から記事を取得し、  
+Torenama は Qiita API と Zenn RSSから記事を取得し、  
 以下のスコア計算式でトレンドランキングを生成するサービスです。
-score = likes * 0.6 + stocks * 0.4
+- Qiita：score = likes * 0.6 + stocks * 0.4
+- Zenn：freshness（新しさ）ベース
+- PostgreSQL に保存
+- Slack から更新可能
+- Render にデプロイ（CloudRunに変更予定）
 
 生成されたランキングは PostgreSQL に保存され、  
-`/mock/trends` API から常に最新データを取得できます。
+`/mock/trends` Qiita は likes / stocks を用いた人気スコア、
+Zenn は RSS から取得可能な公開情報を用いた鮮度ベースの代理スコアで統合ランキングを生成します。
 
 また Slack Slash Command を利用して手動更新することも可能です。
 
@@ -100,6 +105,7 @@ Torenama
 │ │ │ └─ TrendsController.java
 │ │ ├─ service
 │ │ │ ├─ QiitaTrendService.java
+│ │ │ ├─ ZennTrendService.java
 │ │ │ └─ SchedulerService.java
 │ │ └─ ApiApplication.java
 │ │
@@ -295,100 +301,3 @@ SlackトークンやDB接続情報などの機密情報は
 環境変数で管理し、リポジトリには含めていません。
 
 ---
-=======
-# Torenama
-
-Qiita API から記事一覧を取得し、トレンドスコア  
-`likes * 0.6 + stocks * 0.4`  
-を算出してランキング化するアプリです。
-
-本プロジェクトは以下の2サービス構成です。
-
-- `api-server`
-  - Qiita API 取得
-  - トレンドスコア算出
-  - PostgreSQL へ保存
-  - `/mock/trends` 提供
-  - `@Scheduled` による定期更新
-
-- `slack-bolt`
-  - Slack Slash Command `/torenama-items` を受付
-  - `api-server` の `/admin/update` を呼び出して手動更新
-
----
-
-## システム構成
-
-```text
-Slack
-  │
-  │ /torenama-items
-  ▼
-slack-bolt
-  │
-  │ POST /admin/update
-  ▼
-api-server
-  │
-  │ GET /api/v2/items
-  ▼
-Qiita API
-  │
-  ▼
-PostgreSQL
-  │
-  ▼
-GET /mock/trends
-
-
----
-
-# Features
-
-- Qiita API から記事取得
-- トレンドスコア算出
-- PostgreSQL 永続保存
-- `/mock/trends` API 提供
-- Slack Slash Command 更新
-- `@Scheduled` による1日1回更新
-- 例外処理
-- レートリミット対応
-- Render デプロイ対応
-
----
-
-# Requirements
-
-- Java 17
-- Maven 3.9+
-- PostgreSQL
-- Slack App
-- Qiita API Token
-
----
-
-# Environment Variables
-
-## api-server
-
-|Name|Description|
-|---|---|
-|QIITA_TOKEN|Qiita API Token|
-|SPRING_DATASOURCE_URL|PostgreSQL JDBC URL|
-|SPRING_DATASOURCE_USERNAME|DB Username|
-|SPRING_DATASOURCE_PASSWORD|DB Password|
-
----
-
-## slack-bolt
-
-|Name|Description|
-|---|---|
-|SLACK_SIGNING_SECRET|Slack Signing Secret|
-|SLACK_BOT_TOKEN|Slack Bot OAuth Token|
-|API_BASE_URL|api-server URL|
-
-
-
-
-
